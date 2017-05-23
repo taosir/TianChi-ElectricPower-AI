@@ -13,26 +13,21 @@ batch_size = 5
 num_batches = total_series_length//batch_size//truncated_backprop_length
 num_layers = 3
 
+
 def generateData():
-    x = np.array(np.random.choice(2, total_series_length, p=[0.5, 0.5]))
+    x = np.sin(np.linspace(0.0, np.pi * 10, num=total_series_length, dtype=np.float32 ))
     y = np.roll(x, echo_step)
+
     y[0:echo_step] = 0
-
-    print(x)
-    print(y)
-
-    print(x.shape)
-    print(y.shape)
 
     x = x.reshape((batch_size, -1))  # The first index changing slowest, subseries as rows
     y = y.reshape((batch_size, -1))
 
-    print(x.shape)
-    print(y.shape)
     return (x, y)
 
+
 batchX_placeholder = tf.placeholder(tf.float32, [batch_size, truncated_backprop_length])
-batchY_placeholder = tf.placeholder(tf.int32, [batch_size, truncated_backprop_length])
+batchY_placeholder = tf.placeholder(tf.float32, [batch_size, truncated_backprop_length])
 
 init_state = tf.placeholder(tf.float32, [num_layers, 2, batch_size, state_size])
 state_per_layer_list = tf.stack(init_state, axis=0)
@@ -41,8 +36,8 @@ rnn_tuple_state = tuple(
      for idx in range(num_layers)]
 )
 
-W2 = tf.Variable(np.random.rand(state_size, num_classes),dtype=tf.float32)
-b2 = tf.Variable(np.zeros((1,num_classes)), dtype=tf.float32)
+W2 = tf.Variable(np.random.rand(state_size, num_classes), dtype=tf.float32)
+b2 = tf.Variable(np.zeros((1, num_classes)), dtype=tf.float32)
 
 # Forward passes
 cells = []
@@ -50,20 +45,21 @@ for n in range(num_layers):
     cells.append(tf.contrib.rnn.BasicLSTMCell(state_size, state_is_tuple=True))
 cell = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)
 
-states_series, current_state = tf.nn.dynamic_rnn(cell, tf.expand_dims(batchX_placeholder, -1), initial_state=rnn_tuple_state)
+states_series, current_state = tf.nn.dynamic_rnn(cell, tf.expand_dims(batchX_placeholder, -1),
+                                                 initial_state=rnn_tuple_state)
 states_series = tf.reshape(states_series, [-1, state_size])
 
-logits = tf.matmul(states_series, W2) + b2 #Broadcasted addition
+logits = tf.matmul(states_series, W2) + b2  # Broadcasted addition
 labels = tf.reshape(batchY_placeholder, [-1])
 
 logits_series = tf.unstack(tf.reshape(logits, [batch_size, truncated_backprop_length, num_classes]), axis=1)
 predictions_series = [tf.nn.softmax(logit) for logit in logits_series]
 
-
 losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 total_loss = tf.reduce_mean(losses)
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(total_loss)
+
 
 def plot(loss_list, predictions_series, batchX, batchY):
     plt.subplot(2, 3, 1)
@@ -88,15 +84,13 @@ def plot(loss_list, predictions_series, batchX, batchY):
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    #plt.ion()
-    #plt.figure()
-    #plt.show()
+    plt.ion()
+    plt.figure()
+    plt.show()
     loss_list = []
 
     for epoch_idx in range(num_epochs):
-        x,y = generateData()
-        # print(x)
-        # print(y)
+        x, y = generateData()
 
         _current_state = np.zeros((num_layers, 2, batch_size, state_size))
 
@@ -106,8 +100,8 @@ with tf.Session() as sess:
             start_idx = batch_idx * truncated_backprop_length
             end_idx = start_idx + truncated_backprop_length
 
-            batchX = x[:,start_idx:end_idx]
-            batchY = y[:,start_idx:end_idx]
+            batchX = x[:, start_idx:end_idx]
+            batchY = y[:, start_idx:end_idx]
 
             _total_loss, _train_step, _current_state, _predictions_series = sess.run(
                 [total_loss, train_step, current_state, predictions_series],
@@ -117,12 +111,11 @@ with tf.Session() as sess:
                     init_state: _current_state
                 })
 
-
             loss_list.append(_total_loss)
 
-            if batch_idx%100 == 0:
-                print("Step",batch_idx, "Batch loss", _total_loss)
-                #plot(loss_list, _predictions_series, batchX, batchY)
+            if batch_idx % 100 == 0:
+                print("Step", batch_idx, "Batch loss", _total_loss)
+                plot(loss_list, _predictions_series, batchX, batchY)
 
-#plt.ioff()
-#plt.show()
+plt.ioff()
+plt.show()
